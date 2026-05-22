@@ -9,6 +9,26 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Monorepo Path Configuration
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+    FRONTEND_DIST_DIR = os.getenv(
+        "FRONTEND_DIST_DIR",
+        os.path.abspath(os.path.join(BASE_DIR, "..", "frontend", "dist"))
+    )
+    INSTALLER_TEMPLATE_PATH = os.getenv(
+        "INSTALLER_TEMPLATE_PATH",
+        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "installer_template.sh"))
+    )
+    KTMC_PY_PATH = os.getenv(
+        "KTMC_PY_PATH",
+        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "ktmc.py"))
+    )
+    FRPC_PATH = os.getenv(
+        "FRPC_PATH",
+        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "bin", "frp", "frpc"))
+    )
+
     # FRP Config
     FRPS_BIND_ADDR = os.getenv("FRPS_BIND_ADDR", "0.0.0.0")
     FRPS_BIND_PORT = int(os.getenv("FRPS_BIND_PORT", "7000"))
@@ -42,3 +62,4 @@ class Config:
         os.getenv("MAIL_DEFAULT_SENDER_EMAIL", "noreply@kanara.xyz"),
     )
     BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
+

@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, request, redirect, url_for, send_file, abort
+from flask import Blueprint, request, redirect, url_for, send_file, abort, current_app
 from flask_login import login_user, logout_user
 from .models import User
 from . import db, login_manager
@@ -7,7 +7,8 @@ from sqlalchemy import or_
 auth = Blueprint("auth", __name__)
 
 def _frontend_dist_dir():
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+    return current_app.config.get("FRONTEND_DIST_DIR")
+
 
 @login_manager.user_loader
 def load_user(user_id):

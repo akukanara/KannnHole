@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, request, redirect, url_for, abort, flash, jsonify, send_file
+from flask import Blueprint, request, redirect, url_for, abort, flash, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from .models import db, Client, User
 
@@ -7,7 +7,8 @@ admin = Blueprint("admin", __name__)
 
 
 def _frontend_dist_dir():
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+    return current_app.config.get("FRONTEND_DIST_DIR")
+
 
 @admin.route("/admin")
 @login_required

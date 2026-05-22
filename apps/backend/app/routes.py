@@ -12,7 +12,8 @@ from .email import send_verification_email
 main = Blueprint("main", __name__)
 
 def _frontend_dist_dir():
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+    return current_app.config.get("FRONTEND_DIST_DIR")
+
 
 
 def _serve_frontend_page(relative_path):
@@ -242,7 +243,7 @@ def generate_installer(client_id, token):
     client = Client.query.filter_by(client_id=client_id, token=token).first_or_404()
     base = request.host_url.rstrip("/")
 
-    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "lib", "installer_template.sh"))
+    template_path = current_app.config.get("INSTALLER_TEMPLATE_PATH")
     with open(template_path, "r") as f:
         template = f.read()
 
@@ -259,7 +260,7 @@ def serve_ktmc_py(client_id, token):
     if not client:
         abort(403)
 
-    path = os.path.join(os.path.dirname(__file__), "../lib/ktmc.py")
+    path = current_app.config.get("KTMC_PY_PATH")
     return send_file(path, mimetype="text/x-python")
 
 
@@ -269,7 +270,7 @@ def serve_frpc(client_id, token):
     if not client:
         abort(403)
 
-    path = os.path.join(os.path.dirname(__file__), "../lib/bin/frp/frpc")
+    path = current_app.config.get("FRPC_PATH")
     return send_file(path, mimetype="application/octet-stream")
 
 

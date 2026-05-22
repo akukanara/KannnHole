@@ -51,12 +51,14 @@ services:
       S3_KEY: ${S3_KEY}
       S3_SECRET: ${S3_SECRET}
     volumes:
-      - ./app:/app/app
-      - ./config.py:/app/config.py
-      - ./ktm.py:/app/ktm.py
-      - ./data:/app/data
-      - ./bin:/app/bin
+      - ./apps/backend/app:/app/apps/backend/app
+      - ./apps/backend/config.py:/app/apps/backend/config.py
+      - ./apps/backend/ktm.py:/app/apps/backend/ktm.py
+      - ./apps/backend/data:/app/apps/backend/data
+      - ./apps/backend/bin:/app/apps/backend/bin
+      - ./packages/agent:/app/packages/agent
     command: python ktm.py
 
 volumes:
   ktm-db-dev-data:
+

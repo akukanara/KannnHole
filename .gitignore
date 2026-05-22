@@ -1,8 +1,40 @@
+# Environments & Secrets
+.env
+.env.*
+! .env.example
 venv/
+.venv/
+env/
+
+# Python caching & bytecode
 __pycache__/
 *.pyc
-frontend/node_modules/
-frontend/dist/
-frontend/.astro/
-legacy_frontend/
-.env
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Frontend dependencies and builds
+node_modules/
+apps/frontend/node_modules/
+apps/frontend/dist/
+apps/frontend/.astro/
+.astro/
+
+# Backend runtime and operational files
+apps/backend/bin/frp/config/*.log
+apps/backend/bin/frp/config/*.pid
+apps/backend/bin/frp/config/frps.ini
+apps/backend/data/profile/photos/*
+!apps/backend/data/profile/photos/.gitkeep
+
+# System and IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
