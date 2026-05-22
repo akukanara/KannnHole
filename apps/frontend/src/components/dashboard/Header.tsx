@@ -10,7 +10,7 @@ const Header = () => {
             href="/"
           >
             <span className="inline-grid h-7 w-7 place-items-center rounded-md bg-slate-900 text-xs font-bold text-white">K</span>
-            <span className="hidden font-bold sm:inline-block">KTM Dashboard</span>
+            <span className="hidden font-bold sm:inline-block">KannnHole Dashboard</span>
           </a>
         </div>
         <AccountNav />

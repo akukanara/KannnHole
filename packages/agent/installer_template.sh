@@ -44,8 +44,8 @@ case "$ID" in
         ;;
 esac
 
-mkdir -p /root/ktm/bin/frp
-cd /root/ktm
+mkdir -p /root/kannnhole/bin/frp
+cd /root/kannnhole
 
 curl -fsSLo ktmc.py "{BASE}/client/{CLIENT_ID}/{TOKEN}/ktmc.py"
 curl -fsSLo config.json "{BASE}/client/{CLIENT_ID}/{TOKEN}/config.json"
@@ -57,16 +57,16 @@ source bin/venv/bin/activate
 pip install --upgrade pip
 pip install requests toml
 
-SERVICE_FILE="/etc/systemd/system/ktm.service"
+SERVICE_FILE="/etc/systemd/system/kannnhole.service"
 cat <<EOF > $SERVICE_FILE
 [Unit]
-Description=FRP Client Agent
+Description=KannnHole Client Agent
 After=network.target
 
 [Service]
 User=root
-WorkingDirectory=/root/ktm
-ExecStart=/root/ktm/bin/venv/bin/python /root/ktm/ktmc.py
+WorkingDirectory=/root/kannnhole
+ExecStart=/root/kannnhole/bin/venv/bin/python /root/kannnhole/ktmc.py
 Restart=always
 RestartSec=5
 
@@ -76,7 +76,7 @@ EOF
 
 systemctl daemon-reexec
 systemctl daemon-reload
-systemctl enable ktm.service
-systemctl restart ktm.service
+systemctl enable kannnhole.service
+systemctl restart kannnhole.service
 
 echo "[OK] FRP Client berhasil diinstal dan dijalankan sebagai service."

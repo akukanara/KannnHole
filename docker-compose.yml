@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: ktm-db-dev
+    container_name: kannnhole-db-dev
     env_file:
       - .env
     environment:
@@ -11,7 +11,7 @@ services:
     ports:
       - "127.0.0.1:${DB_HOST_PORT}:5432"
     volumes:
-      - ktm-db-dev-data:/var/lib/postgresql/data
+      - kannnhole-db-dev-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -19,11 +19,11 @@ services:
       retries: 20
 
   app:
-    image: kannnaja/ktm:latest
+    image: kannnaja/kannnhole:latest
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ktm-app-dev
+    container_name: kannnhole-app-dev
     depends_on:
       db:
         condition: service_healthy
@@ -53,12 +53,12 @@ services:
     volumes:
       - ./apps/backend/app:/app/apps/backend/app
       - ./apps/backend/config.py:/app/apps/backend/config.py
-      - ./apps/backend/ktm.py:/app/apps/backend/ktm.py
+      - ./apps/backend/kannnhole.py:/app/apps/backend/kannnhole.py
       - ./apps/backend/data:/app/apps/backend/data
       - ./apps/backend/bin:/app/apps/backend/bin
       - ./packages/agent:/app/packages/agent
-    command: python ktm.py
+    command: python kannnhole.py
 
 volumes:
-  ktm-db-dev-data:
+  kannnhole-db-dev-data:
 

@@ -13,7 +13,7 @@ from app.models import User
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Create a KTM user")
+    parser = argparse.ArgumentParser(description="Create a KannnHole user")
     parser.add_argument("--username", help="Unique username")
     parser.add_argument("--password", help="User password")
     parser.add_argument("--email", default="", help="Optional email")
@@ -39,6 +39,7 @@ def prompt_if_missing(value, label, secret=False, default=None):
 
 
 def main():
+    os.environ["KANNNHOLE_DISABLE_FRPS_START"] = "true"
     os.environ["KTM_DISABLE_FRPS_START"] = "true"
     args = parse_args()
     username = prompt_if_missing(args.username, "Username").strip()

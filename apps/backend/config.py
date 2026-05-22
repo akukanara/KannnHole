@@ -2,10 +2,10 @@ import os
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "thisiskanaratunnel_secret")
+    SECRET_KEY = os.getenv("SECRET_KEY", "thisiskannnhole_secret")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:postgres@127.0.0.1:5432/ktm",
+        "postgresql://postgres:postgres@127.0.0.1:5432/kannnhole",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
@@ -33,7 +33,7 @@ class Config:
     FRPS_BIND_ADDR = os.getenv("FRPS_BIND_ADDR", "0.0.0.0")
     FRPS_BIND_PORT = int(os.getenv("FRPS_BIND_PORT", "7000"))
     FRPS_SERVER_ADDR = os.getenv("FRPS_SERVER_ADDR", "127.0.0.1")
-    FRPS_GLOBAL_TOKEN = os.getenv("FRPS_GLOBAL_TOKEN", "thisiskanaratunnel")
+    FRPS_GLOBAL_TOKEN = os.getenv("FRPS_GLOBAL_TOKEN", "thisiskannnhole")
 
     # Profile upload settings
     USE_S3_UPLOAD = os.getenv("USE_S3_UPLOAD", "false").lower() == "true"
@@ -58,8 +58,8 @@ class Config:
     MAIL_USERNAME = os.getenv("MAIL_USERNAME", "")
     MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "")
     MAIL_DEFAULT_SENDER = (
-        os.getenv("MAIL_DEFAULT_SENDER_NAME", "Kana Tunnel"),
-        os.getenv("MAIL_DEFAULT_SENDER_EMAIL", "noreply@kanara.xyz"),
+        os.getenv("MAIL_DEFAULT_SENDER_NAME", "KannnHole Tunnel"),
+        os.getenv("MAIL_DEFAULT_SENDER_EMAIL", "noreply@kannnhole.xyz"),
     )
     BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
 

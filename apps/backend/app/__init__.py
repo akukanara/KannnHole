@@ -31,7 +31,7 @@ def create_app():
         generate_frps_ini(app.config)
         start_frps()
 
-    disable_frps = os.getenv("KTM_DISABLE_FRPS_START", "false").lower() == "true"
+    disable_frps = os.getenv("KANNNHOLE_DISABLE_FRPS_START", os.getenv("KTM_DISABLE_FRPS_START", "false")).lower() == "true"
     if not disable_frps:
         threading.Thread(target=frps_background, daemon=True).start()
 

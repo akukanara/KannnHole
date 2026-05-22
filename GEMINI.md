@@ -1,98 +1,90 @@
-# GEMINI.md - Kanara Tunnel Manager (KTM)
+# GEMINI.md - KannnHole
 
-This file provides context and instructions for AI agents working on the Kanara Tunnel Manager project.
+This file provides context and instructions for AI agents working on the **KannnHole** project.
 
 ## Project Overview
 
-**Kanara Tunnel Manager (KTM)** is a modern web-based interface for managing [FRP (Fast Reverse Proxy)](https://github.com/fatedier/frp) tunnels. It allows administrators and users to create, monitor, and manage remote access and NAT traversal tunnels through a clean dashboard.
+**KannnHole** is a modern, high-performance web-based interface for managing [FRP (Fast Reverse Proxy)](https://github.com/fatedier/frp) tunnels. It allows administrators and users to create, monitor, and manage remote access and NAT traversal tunnels through a premium, glassmorphic dashboard.
 
 ### Core Architecture
-- **Backend:** Python 3.10+ using **Flask**.
-- **Database:** **PostgreSQL** (primary) with **Redis** (caching).
-- **Frontend:** **Astro** with **React**, **Radix UI**, and **Tailwind CSS**. The frontend is built into static files (`frontend/dist`) and served by the Flask backend.
-- **Client Agent:** A Python-based agent (`lib/ktmc.py`) that runs on client machines, automatically fetches tunnel configurations from the server, and manages the local `frpc` process.
-- **FRP Integration:** Manages `frps` (server) and `frpc` (client) binaries.
+- **Monorepo Structure:** Structured via npm workspaces to isolate independent services.
+- **Backend:** Python 3.10+ using **Flask**, managing operational database models, active connections, and `frps` routing configurations.
+- **Database:** **PostgreSQL** (primary) with support for **Redis** (caching).
+- **Frontend:** **Astro** with **React**, **Radix UI**, and **Tailwind CSS**, statically compiled into `apps/frontend/dist` and served securely by the Flask backend routes.
+- **Client Agent:** A Python-based agent (`packages/agent/ktmc.py`) running on client machines that periodically fetches tunnel configurations from the backend server and hot-reloads the local `frpc` process.
+
+---
 
 ## Directory Structure
 
-- `app/`: Flask application package (models, routes, auth, email, etc.).
-- `frontend/`: Astro/React source code.
-- `lib/`: Shared libraries, client agent (`ktmc.py`), and installer templates.
-- `bin/`: Binaries for FRP and local configuration.
-- `data/`: Local storage for profile photos and other persistent data.
-- `scripts/`: Utility scripts (e.g., `create_user.py`).
-- `frp/`: FRP server/client binaries and default TOML configs.
+- `apps/backend/`:
+  - `app/`: Flask application package (models, routes, auth, email, etc.).
+  - `bin/`: FRPS binaries, active operational logs, and configuration state files.
+  - `data/`: Local storage for profile photos and user media.
+  - `scripts/`: Development and database utility scripts (e.g. `create_user.py`).
+  - `config.py`: Centralized environment configurations.
+  - `kannnhole.py`: Flask launcher and database initialization entrypoint.
+- `apps/frontend/`: Astro/React source code and production build workspace.
+- `packages/agent/`:
+  - `bin/frp/frpc`: Compact proxy daemon binary.
+  - `installer_template.sh`: Automated systemd daemon installer script.
+  - `ktmc.py`: Configuration-sync script.
+- `frp/`: Global default FRP configs.
+
+---
 
 ## Getting Started
 
-### Backend Setup
-1. Create and activate a virtual environment:
+### Workspace Orchestration
+Dependencies and dev commands are orchestrated via root `package.json` workspaces.
+
+#### Development setup
+1. Run backend development mode:
+   ```bash
+   npm run backend:dev
+   ```
+2. Run frontend HMR (Hot Module Replacement) development server:
+   ```bash
+   npm run frontend:dev
+   ```
+3. Compile production frontend client assets:
+   ```bash
+   npm run frontend:build
+   ```
+
+#### Backend Setup (Manual)
+1. Navigate to the backend folder:
+   ```bash
+   cd apps/backend
+   ```
+2. Create and activate environment:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # Windows: venv\Scripts\activate
+   source venv/Scripts/activate
    ```
-2. Install dependencies:
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-3. Copy `.env.example` to `.env` and configure your environment variables.
-4. Run the application:
+4. Run application:
    ```bash
-   python ktm.py
+   python kannnhole.py
    ```
 
-### Frontend Setup
-1. Navigate to the frontend directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Build for production (required for Flask to serve the UI):
-   ```bash
-   npm run build
-   ```
-4. For development with HMR:
-   ```bash
-   npm run dev
-   ```
-
-### Docker
-The project can be run entirely via Docker:
-```bash
-docker-compose up --build
-```
+---
 
 ## Development Conventions
 
 ### Backend (Python/Flask)
 - Follow **PEP 8** style guidelines.
 - Use **SQLAlchemy** for database interactions.
-- API endpoints should return JSON and follow RESTful principles where possible.
-- New routes should be added to `app/routes.py` (or a relevant blueprint).
+- Access monorepo-safe path config properties (`FRONTEND_DIST_DIR`, `INSTALLER_TEMPLATE_PATH`, `KTMC_PY_PATH`, `FRPC_PATH`) from the central `current_app.config` mapping instead of hardcoding relative paths.
+- Keep blueprints clean and modular (e.g. `auth.py`, `admin.py`, `routes.py`).
 
 ### Frontend (Astro/React)
-- Use **Radix UI** primitives for accessible components.
-- Style with **Tailwind CSS**.
-- Prefer functional components and hooks in React.
-- Ensure the frontend build is updated (`npm run build`) after making changes if testing via the Flask server.
+- Use **Radix UI** and **Tailwind CSS** for premium, fully accessible design features.
+- Compile and build frontend assets using `npm run frontend:build` to let the Flask server pick up UI modifications.
 
 ### Client Agent
-- The installer script (`lib/installer_template.sh`) is used to deploy the agent on Linux machines.
-- The agent (`lib/ktmc.py`) communicates with the server via the `/api/<client_id>/kana_frpc.json` endpoint.
-
-## Key Files
-- `ktm.py`: Main entry point for the Flask application.
-- `config.py`: Configuration class handling environment variables.
-- `app/models.py`: Database schema definitions.
-- `app/routes.py`: Main API and routing logic.
-- `frontend/src/pages/`: Astro pages defining the UI structure.
-- `lib/ktmc.py`: The client-side tunnel management agent.
-
-## TODO / Future Improvements
-- [ ] Add automated test suite (unit and integration tests).
-- [ ] Implement more granular Role-Based Access Control (RBAC).
-- [ ] Add real-time tunnel status monitoring via WebSockets or polling.
-- [ ] Improve documentation for multi-tenancy support.
+- The installer (`packages/agent/installer_template.sh`) compiles a native systemd unit named `kannnhole.service` inside target hosts.
+- Communications are directed to the secure API `/api/<client_id>/kana_frpc.json` endpoint.

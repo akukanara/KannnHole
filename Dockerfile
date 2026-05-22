@@ -23,7 +23,7 @@ COPY apps/backend/app ./app
 COPY apps/backend/bin ./bin
 COPY apps/backend/data ./data
 COPY apps/backend/scripts ./scripts
-COPY apps/backend/ktm.py apps/backend/config.py ./
+COPY apps/backend/kannnhole.py apps/backend/config.py ./
 COPY packages/agent/ ../../packages/agent/
 COPY frp ../../frp
 COPY --from=frontend-builder /build/frontend/dist ../frontend/dist
@@ -35,5 +35,5 @@ ENV FRONTEND_DIST_DIR=/app/apps/frontend/dist \
     FRPC_PATH=/app/packages/agent/bin/frp/frpc
 
 EXPOSE 5000 7000
-CMD ["python", "ktm.py"]
+CMD ["python", "kannnhole.py"]
 

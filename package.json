@@ -1,5 +1,5 @@
 {
-  "name": "ktm-monorepo",
+  "name": "kannnhole-monorepo",
   "version": "1.0.0",
   "private": true,
   "workspaces": [
@@ -9,7 +9,7 @@
   "scripts": {
     "frontend:dev": "npm run dev --workspace=apps/frontend",
     "frontend:build": "npm run build --workspace=apps/frontend",
-    "backend:dev": "cd apps/backend && python ktm.py",
+    "backend:dev": "cd apps/backend && python kannnhole.py",
     "backend:install": "cd apps/backend && pip install -r requirements.txt"
   }
 }
