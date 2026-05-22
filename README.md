@@ -24,10 +24,13 @@ kannnhole-monorepo/
 │       ├── src/                # Astro pages, React hooks, and design system components
 │       └── dist/               # Statically compiled client assets (served by FastAPI backend)
 ├── packages/
-│   └── agent/                  # 🤖 KannnHole Client Agent
+│   └── agent/                  # 🤖 Go-based KannnHole Client Agent
 │       ├── bin/frp/frpc        # Compact client FRPC proxy binary
+│       ├── dist/               # Standalone multi-platform compiled agent binaries
+│       ├── build.go            # Agent cross-compilation builder script
+│       ├── go.mod              # Go module definition file
 │       ├── installer_template.sh # Automagic Linux daemon one-line setup installer
-│       └── ktmc.py             # Automagic configuration sync client-side daemon
+│       └── main.go             # Agent daemon core source code
 ├── .env                        # Central local workspace environment overrides
 ├── package.json                # Root npm workspaces orchestrator
 ├── Dockerfile                  # Multi-stage monorepo build runner
@@ -68,6 +71,11 @@ kannnhole-monorepo/
 - **Framework:** Astro 4 (Static Page Generation)
 - **UI Libraries:** React 18, Radix UI Primitives, Tailwind CSS.
 - **Serving:** Statically compiled and efficiently served directly through FastAPI routing hooks.
+
+### Client Agent
+- **Language:** Go (1.20+)
+- **Daemon Management:** Compiled binary running as a systemd background daemon.
+- **Config Sync:** Dynamically hot-reloads local `frpc` process on remote configuration updates.
 
 ### Operations
 - **Containerization:** Multi-stage lightweight Alpine-based `Dockerfile`.
