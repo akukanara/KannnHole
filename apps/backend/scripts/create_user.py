@@ -8,7 +8,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from app import create_app, db
+from app.database import engine, Base, SessionLocal
 from app.models import User
 
 
@@ -54,24 +54,27 @@ def main():
         print("error: username cannot be empty", file=sys.stderr)
         return 1
 
-    app = create_app()
-    with app.app_context():
-        db.create_all()
+    # Initialize and create database tables if missing
+    Base.metadata.create_all(bind=engine)
 
-        if User.query.filter_by(username=username).first():
+    db = SessionLocal()
+    try:
+        if db.query(User).filter(User.username == username).first():
             print(f"error: username '{username}' already exists", file=sys.stderr)
             return 2
 
-        if email and User.query.filter_by(email=email).first():
+        if email and db.query(User).filter(User.email == email).first():
             print(f"error: email '{email}' already exists", file=sys.stderr)
             return 3
 
         user = User(username=username, email=email, role=role)
         user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
+        db.add(user)
+        db.commit()
 
         print(f"created user: id={user.id} username={user.username} role={user.role}")
+    finally:
+        db.close()
     return 0
 
 

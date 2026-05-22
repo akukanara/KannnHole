@@ -1,4 +1,16 @@
 import os
+import sys
+
+# Detect if the application is running in a PyInstaller frozen state
+IS_FROZEN = getattr(sys, 'frozen', False)
+if IS_FROZEN:
+    # Directory where the executable binary is located (for writeable/runtime files)
+    EXE_DIR = os.path.dirname(sys.executable)
+    # Temporary directory where PyInstaller unpacks internal files/assets
+    BUNDLE_DIR = sys._MEIPASS
+else:
+    EXE_DIR = os.path.abspath(os.path.dirname(__file__))
+    BUNDLE_DIR = EXE_DIR
 
 
 class Config:
@@ -9,24 +21,24 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Monorepo Path Configuration
-    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    # Monorepo Path Configuration (using frozen bundle assets if compiled)
+    BASE_DIR = BUNDLE_DIR
 
     FRONTEND_DIST_DIR = os.getenv(
         "FRONTEND_DIST_DIR",
-        os.path.abspath(os.path.join(BASE_DIR, "..", "frontend", "dist"))
+        os.path.join(BUNDLE_DIR, "frontend") if IS_FROZEN else os.path.abspath(os.path.join(BUNDLE_DIR, "..", "frontend", "dist"))
     )
     INSTALLER_TEMPLATE_PATH = os.getenv(
         "INSTALLER_TEMPLATE_PATH",
-        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "installer_template.sh"))
+        os.path.join(BUNDLE_DIR, "agent", "installer_template.sh") if IS_FROZEN else os.path.abspath(os.path.join(BUNDLE_DIR, "..", "..", "packages", "agent", "installer_template.sh"))
     )
-    KTMC_PY_PATH = os.getenv(
-        "KTMC_PY_PATH",
-        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "ktmc.py"))
+    KTMC_BIN_PATH = os.getenv(
+        "KTMC_BIN_PATH",
+        os.path.join(BUNDLE_DIR, "agent", "ktmc") if IS_FROZEN else os.path.abspath(os.path.join(BUNDLE_DIR, "..", "..", "packages", "agent", "ktmc"))
     )
     FRPC_PATH = os.getenv(
         "FRPC_PATH",
-        os.path.abspath(os.path.join(BASE_DIR, "..", "..", "packages", "agent", "bin", "frp", "frpc"))
+        os.path.join(BUNDLE_DIR, "agent", "bin", "frpc") if IS_FROZEN else os.path.abspath(os.path.join(BUNDLE_DIR, "..", "..", "packages", "agent", "bin", "frp", "frpc"))
     )
 
     # FRP Config
@@ -37,9 +49,9 @@ class Config:
 
     # Profile upload settings
     USE_S3_UPLOAD = os.getenv("USE_S3_UPLOAD", "false").lower() == "true"
-    PROFILE_UPLOAD_FOLDER = os.path.join(
-        os.path.dirname(__file__), "data", "profile", "photos"
-    )
+    
+    # Store uploads in EXE_DIR (writeable directory)
+    PROFILE_UPLOAD_FOLDER = os.path.join(EXE_DIR, "data", "profile", "photos")
 
     # For S3 uploads
     S3_BUCKET = os.getenv("S3_BUCKET", "your-bucket-name")
@@ -62,4 +74,3 @@ class Config:
         os.getenv("MAIL_DEFAULT_SENDER_EMAIL", "noreply@kannnhole.xyz"),
     )
     BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
-

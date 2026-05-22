@@ -7,7 +7,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-echo "Menginstall dependensi"
+echo "Menginstall dependensi (curl)"
 if [ -f /etc/os-release ]; then
     . /etc/os-release
 else
@@ -15,7 +15,7 @@ else
     exit 1
 fi
 
-PACKAGE_NAME="python3 python3-venv curl"
+PACKAGE_NAME="curl"
 
 case "$ID" in
     debian|ubuntu|linuxmint|pop)
@@ -44,29 +44,26 @@ case "$ID" in
         ;;
 esac
 
-mkdir -p /root/kannnhole/bin/frp
+mkdir -p /root/kannnhole
 cd /root/kannnhole
 
-curl -fsSLo ktmc.py "{BASE}/client/{CLIENT_ID}/{TOKEN}/ktmc.py"
-curl -fsSLo config.json "{BASE}/client/{CLIENT_ID}/{TOKEN}/config.json"
-curl -fsSLo bin/frp/frpc "{BASE}/client/{CLIENT_ID}/{TOKEN}/frpc"
-chmod +x bin/frp/frpc
+echo "Downloading KannnHole Go Client..."
+curl -fsSLo ktmc "{BASE}/client/{CLIENT_ID}/{TOKEN}/ktmc"
+chmod +x ktmc
 
-python3 -m venv bin/venv
-source bin/venv/bin/activate
-pip install --upgrade pip
-pip install requests toml
+echo "Downloading configuration..."
+curl -fsSLo config.json "{BASE}/client/{CLIENT_ID}/{TOKEN}/config.json"
 
 SERVICE_FILE="/etc/systemd/system/kannnhole.service"
 cat <<EOF > $SERVICE_FILE
 [Unit]
-Description=KannnHole Client Agent
+Description=KannnHole Client Agent (Go)
 After=network.target
 
 [Service]
 User=root
 WorkingDirectory=/root/kannnhole
-ExecStart=/root/kannnhole/bin/venv/bin/python /root/kannnhole/ktmc.py
+ExecStart=/root/kannnhole/ktmc
 Restart=always
 RestartSec=5
 
@@ -79,4 +76,5 @@ systemctl daemon-reload
 systemctl enable kannnhole.service
 systemctl restart kannnhole.service
 
-echo "[OK] FRP Client berhasil diinstal dan dijalankan sebagai service."
+echo "[OK] FRP Go Client berhasil diinstal dan dijalankan sebagai service."
+

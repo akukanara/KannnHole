@@ -1,34 +1,32 @@
+from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi.responses import RedirectResponse, FileResponse
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 import os
-from flask import Blueprint, request, redirect, url_for, abort, flash, jsonify, send_file, current_app
-from flask_login import login_required, current_user
-from .models import db, Client, User
+from typing import Optional
+from .database import get_db
+from .models import User, Client
+from .auth import require_admin
+from config import Config
 
-admin = Blueprint("admin", __name__)
+router = APIRouter()
 
-
-def _frontend_dist_dir():
-    return current_app.config.get("FRONTEND_DIST_DIR")
-
-
-@admin.route("/admin")
-@login_required
-def admin_dashboard():
-    if current_user.role != "admin":
-        abort(403)
-    page = os.path.join(_frontend_dist_dir(), "admin", "index.html")
+@router.get("/admin")
+def admin_dashboard(request: Request, user: User = Depends(require_admin)):
+    page = os.path.join(Config.FRONTEND_DIST_DIR, "admin", "index.html")
     if not os.path.exists(page):
-        abort(503, description="Frontend build not found. Run: cd frontend && npm run build")
-    return send_file(page)
+        raise HTTPException(
+            status_code=503,
+            detail="Frontend build not found. Run: cd frontend && npm run build"
+        )
+    return FileResponse(page)
 
 
-@admin.route("/api/admin")
-@login_required
-def admin_data():
-    if current_user.role != "admin":
-        abort(403)
-    users = User.query.all()
-    clients = Client.query.all()
-    return jsonify({
+@router.get("/api/admin")
+def admin_data(db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    users = db.query(User).all()
+    clients = db.query(Client).all()
+    return {
         "users": [
             {"id": u.id, "username": u.username, "email": u.email, "role": u.role}
             for u in users
@@ -37,124 +35,119 @@ def admin_data():
             {"id": c.id, "client_id": c.client_id, "user_id": c.user_id}
             for c in clients
         ]
-    })
+    }
 
 
-@admin.route("/admin/users/<int:user_id>/delete", methods=["POST"])
-@login_required
-def delete_user(user_id):
-    if current_user.role != "admin":
-        abort(403)
+@router.post("/admin/users/{user_id}/delete")
+def delete_user(user_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if target_user.id == user.id:
+        return RedirectResponse(url="/admin?error=cannot_delete_self", status_code=303)
 
-    user = User.query.get_or_404(user_id)
-    if user.id == current_user.id:
-        flash("❌ Cannot delete yourself", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
-
-    # Hapus semua clients yang dimiliki user
-    Client.query.filter_by(user_id=user.id).delete()
-
-    db.session.delete(user)
-    db.session.commit()
-    flash("✅ User and related clients deleted", "success")
-    return redirect(url_for("admin.admin_dashboard"))
+    # Delete all clients belonging to the user
+    db.query(Client).filter(Client.user_id == target_user.id).delete()
+    db.delete(target_user)
+    db.commit()
+    return RedirectResponse(url="/admin?success=user_deleted", status_code=303)
 
 
-@admin.route("/admin/clients/<client_id>/delete", methods=["POST"])
-@login_required
-def delete_client(client_id):
-    if current_user.role != "admin":
-        abort(403)
-    client = Client.query.filter_by(client_id=client_id).first_or_404()
-    db.session.delete(client)
-    db.session.commit()
-    flash("✅ Client deleted", "success")
-    return redirect(url_for("admin.admin_dashboard"))
-
-@admin.route("/admin/clients/<client_id>/tunnels/<int:index>/delete", methods=["POST"])
-@login_required
-def delete_tunnel(client_id, index):
-    if current_user.role != "admin":
-        abort(403)
-    client = Client.query.filter_by(client_id=client_id).first_or_404()
-    if index < 0 or index >= len(client.frpc_config):
-        flash("❌ Invalid tunnel index", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
-    del client.frpc_config[index]
-    db.session.commit()
-    flash("✅ Tunnel deleted", "success")
-    return redirect(url_for("admin.admin_dashboard"))
+@router.post("/admin/clients/{client_id}/delete")
+def delete_client(client_id: str, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    client = db.query(Client).filter(Client.client_id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    db.delete(client)
+    db.commit()
+    return RedirectResponse(url="/admin?success=client_deleted", status_code=303)
 
 
-@admin.route("/admin/users/add", methods=["POST"])
-@login_required
-def add_user():
-    if current_user.role != "admin":
-        abort(403)
+@router.post("/admin/clients/{client_id}/tunnels/{index}/delete")
+def delete_tunnel(client_id: str, index: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    client = db.query(Client).filter(Client.client_id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    config = list(client.frpc_config or [])
+    if index < 0 or index >= len(config):
+        return RedirectResponse(url="/admin?error=invalid_index", status_code=303)
+    
+    del config[index]
+    client.frpc_config = config
+    flag_modified(client, "frpc_config")
+    
+    db.commit()
+    return RedirectResponse(url="/admin?success=tunnel_deleted", status_code=303)
 
-    username = request.form.get("username", "").strip()
-    password = request.form.get("password", "").strip()
-    email = request.form.get("email", "").strip()
+
+@router.post("/admin/users/add")
+def add_user(
+    username: str = Form(...),
+    password: str = Form(...),
+    email: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    username = username.strip()
+    password = password.strip()
+    email = email.strip() if email else None
 
     if not username or not password:
-        flash("❗Username and password are required", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
+        return RedirectResponse(url="/admin?error=missing_credentials", status_code=303)
 
-    if User.query.filter_by(username=username).first():
-        flash("❗Username already exists", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
+    if db.query(User).filter(User.username == username).first():
+        return RedirectResponse(url="/admin?error=username_exists", status_code=303)
 
-    if email and User.query.filter_by(email=email).first():
-        flash("❗Email already exists", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
+    if email and db.query(User).filter(User.email == email).first():
+        return RedirectResponse(url="/admin?error=email_exists", status_code=303)
 
-    user = User(username=username, email=email or None)
-    user.set_password(password)
-    user.role = "user"
-    db.session.add(user)
-    db.session.commit()
+    new_user = User(username=username, email=email or None, role="user")
+    new_user.set_password(password)
+    db.add(new_user)
+    db.commit()
 
-    flash("✅ User added successfully", "success")
-    return redirect(url_for("admin.admin_dashboard"))
+    return RedirectResponse(url="/admin?success=user_added", status_code=303)
 
-@admin.route("/admin/users/<int:user_id>/edit", methods=["POST"])
-@login_required
-def edit_user(user_id):
-    if current_user.role != "admin":
-        abort(403)
 
-    user = User.query.get_or_404(user_id)
+@router.post("/admin/users/{user_id}/edit")
+def edit_user(
+    user_id: int,
+    username: str = Form(...),
+    password: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    role: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_admin)
+):
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    username = request.form.get("username", "").strip()
-    password = request.form.get("password", "").strip()
-    email = request.form.get("email", "").strip()
-    role = request.form.get("role", "").strip()
+    username = username.strip()
+    email = email.strip() if email else None
+    role = role.strip()
 
-    # Validasi username
     if not username:
-        flash("❗Username is required", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
+        return RedirectResponse(url="/admin?error=username_required", status_code=303)
 
-    existing = User.query.filter_by(username=username).first()
-    if existing and existing.id != user.id:
-        flash("❗Username already taken", "danger")
-        return redirect(url_for("admin.admin_dashboard"))
+    existing = db.query(User).filter(User.username == username).first()
+    if existing and existing.id != target_user.id:
+        return RedirectResponse(url="/admin?error=username_taken", status_code=303)
 
-    # Validasi email
     if email:
-        existing_email = User.query.filter_by(email=email).first()
-        if existing_email and existing_email.id != user.id:
-            flash("❗Email already used", "danger")
-            return redirect(url_for("admin.admin_dashboard"))
+        existing_email = db.query(User).filter(User.email == email).first()
+        if existing_email and existing_email.id != target_user.id:
+            return RedirectResponse(url="/admin?error=email_taken", status_code=303)
 
-    # Apply changes
-    user.username = username
-    user.email = email or None
+    target_user.username = username
+    target_user.email = email or None
     if password:
-        user.set_password(password)
+        target_user.set_password(password.strip())
     if role in ["user", "admin"]:
-        user.role = role
+        target_user.role = role
 
-    db.session.commit()
-    flash("✅ User updated successfully", "success")
-    return redirect(url_for("admin.admin_dashboard"))
+    db.commit()
+    return RedirectResponse(url="/admin?success=user_updated", status_code=303)

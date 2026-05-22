@@ -1,31 +1,36 @@
-from flask import Blueprint, request, redirect, url_for, jsonify, abort, send_file, send_from_directory, Response, current_app, flash
-from flask_login import login_required, current_user
+from fastapi import APIRouter, Request, Depends, Form, File, UploadFile, HTTPException
+from fastapi.responses import RedirectResponse, FileResponse, Response
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from werkzeug.utils import secure_filename
 from botocore.exceptions import BotoCoreError, NoCredentialsError
 import boto3
 import uuid
 import os
 import socket
-from .models import db, Client, User
+from typing import Optional, List, Dict, Any
+
+from .database import get_db
+from .models import Client, User
 from .email import send_verification_email
+from .auth import get_current_user, require_user
+from config import Config
 
-main = Blueprint("main", __name__)
+router = APIRouter()
 
-def _frontend_dist_dir():
-    return current_app.config.get("FRONTEND_DIST_DIR")
-
-
-
-def _serve_frontend_page(relative_path):
-    dist = _frontend_dist_dir()
+def _serve_frontend_page(relative_path: str):
+    dist = Config.FRONTEND_DIST_DIR
     full = os.path.join(dist, relative_path)
     if not os.path.exists(full):
-        abort(503, description="Frontend build not found. Run: cd frontend && npm run build")
-    return send_file(full)
+        raise HTTPException(
+            status_code=503,
+            detail="Frontend build not found. Run: cd frontend && npm run build"
+        )
+    return FileResponse(full)
 
 
-def check_port_availability(port, exclude_client_id=None):
-    clients = Client.query.all()
+def check_port_availability(port: int, db: Session, exclude_client_id: str = None):
+    clients = db.query(Client).all()
     for client in clients:
         if exclude_client_id and client.client_id == exclude_client_id:
             continue
@@ -41,146 +46,145 @@ def check_port_availability(port, exclude_client_id=None):
     return None
 
 
-@main.route("/")
-@login_required
-def dashboard():
+@router.get("/")
+def dashboard(request: Request, user: User = Depends(require_user)):
     return _serve_frontend_page("index.html")
 
 
-@main.route("/profile", methods=["GET", "POST"])
-@login_required
-def profile():
-    if request.method == "POST":
-        file = request.files.get("photo")
-        email = request.form.get("email")
-        password = request.form.get("password")
-
-        updated = False
-
-        # --- FOTO PROFIL ---
-        if file and file.filename:
-            filename = secure_filename(file.filename)
-            ext = os.path.splitext(filename)[1]
-            new_filename = f"{uuid.uuid4().hex}{ext}"
-
-            use_s3 = current_app.config.get("USE_S3_UPLOAD", False)
-
-            try:
-                if use_s3:
-                    s3 = boto3.client(
-                        "s3",
-                        region_name=current_app.config["S3_REGION"],
-                        aws_access_key_id=current_app.config["S3_KEY"],
-                        aws_secret_access_key=current_app.config["S3_SECRET"],
-                    )
-                    bucket = current_app.config["S3_BUCKET"]
-                    s3.upload_fileobj(
-                        file,
-                        bucket,
-                        f"profile_photos/{new_filename}",
-                        ExtraArgs={'ACL': 'public-read', 'ContentType': file.content_type}
-                    )
-                    photo_url = f"https://{bucket}.s3.{current_app.config['S3_REGION']}.amazonaws.com/profile_photos/{new_filename}"
-                else:
-                    folder = current_app.config.get("PROFILE_UPLOAD_FOLDER", "data/profile/photos")
-                    os.makedirs(folder, exist_ok=True)
-                    path = os.path.join(folder, new_filename)
-                    file.save(path)
-                    photo_url = url_for('main.profile_photo', filename=new_filename)
-
-                current_user.profile_url = photo_url
-                updated = True
-                flash("✅ Profile photo updated!", "success")
-            except (BotoCoreError, NoCredentialsError, Exception) as e:
-                flash(f"❌ Upload failed: {str(e)}", "danger")
-
-        # --- EMAIL ---
-        if email and email != current_user.email:
-            current_user.email = email
-            current_user.email_verified = False
-            current_user.email_token = uuid.uuid4().hex
-            updated = True
-
-            if current_app.config.get("ENABLE_EMAIL_VERIFICATION"):
-                from .email import send_verification_email
-                try:
-                    send_verification_email(current_user)
-                    flash("📧 Verification email sent. Please check your inbox.", "info")
-                except Exception as e:
-                    flash(f"❌ Failed to send verification email: {e}", "danger")
-
-        # --- PASSWORD ---
-        if password:
-            current_user.set_password(password)
-            updated = True
-
-        if updated:
-            db.session.commit()
-            flash("✅ Profile updated successfully.", "success")
-        else:
-            flash("⚠️ No changes made.", "warning")
-
-        return redirect(url_for("main.profile"))
-
+@router.get("/profile")
+def profile(request: Request, user: User = Depends(require_user)):
     return _serve_frontend_page("profile/index.html")
 
 
+@router.post("/profile")
+def profile_post(
+    request: Request,
+    photo: Optional[UploadFile] = File(None),
+    email: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    updated = False
 
-@main.route("/profile_photos/<filename>")
-def profile_photo(filename):
-    folder = current_app.config.get("PROFILE_UPLOAD_FOLDER", "data/profile/photos")
+    # --- PROFILE PHOTO ---
+    if photo and photo.filename:
+        filename = secure_filename(photo.filename)
+        ext = os.path.splitext(filename)[1]
+        new_filename = f"{uuid.uuid4().hex}{ext}"
+
+        use_s3 = Config.USE_S3_UPLOAD
+
+        try:
+            if use_s3:
+                s3 = boto3.client(
+                    "s3",
+                    region_name=Config.S3_REGION,
+                    aws_access_key_id=Config.S3_KEY,
+                    aws_secret_access_key=Config.S3_SECRET,
+                )
+                bucket = Config.S3_BUCKET
+                s3.upload_fileobj(
+                    photo.file,
+                    bucket,
+                    f"profile_photos/{new_filename}",
+                    ExtraArgs={'ACL': 'public-read', 'ContentType': photo.content_type}
+                )
+                photo_url = f"https://{bucket}.s3.{Config.S3_REGION}.amazonaws.com/profile_photos/{new_filename}"
+            else:
+                folder = Config.PROFILE_UPLOAD_FOLDER
+                os.makedirs(folder, exist_ok=True)
+                path = os.path.join(folder, new_filename)
+                with open(path, "wb") as f:
+                    f.write(photo.file.read())
+                # Generate local URL matching profile_photo route below
+                photo_url = f"/profile_photos/{new_filename}"
+
+            user.profile_url = photo_url
+            updated = True
+        except (BotoCoreError, NoCredentialsError, Exception) as e:
+            # We don't have flash() so we log it and can optionally pass error parameter in redirect
+            print(f"❌ Upload failed: {str(e)}")
+
+    # --- EMAIL ---
+    if email and email != user.email:
+        user.email = email
+        user.email_verified = False
+        user.email_token = uuid.uuid4().hex
+        updated = True
+
+        if Config.ENABLE_EMAIL_VERIFICATION:
+            try:
+                send_verification_email(user)
+            except Exception as e:
+                print(f"❌ Failed to send verification email: {e}")
+
+    # --- PASSWORD ---
+    if password:
+        user.set_password(password.strip())
+        updated = True
+
+    if updated:
+        db.commit()
+
+    return RedirectResponse(url="/profile", status_code=303)
+
+
+@router.get("/profile_photos/{filename}")
+def profile_photo(filename: str):
+    folder = Config.PROFILE_UPLOAD_FOLDER
     path = os.path.join(folder, filename)
     if not os.path.exists(path):
-        abort(404)
-    return send_file(path)
+        raise HTTPException(status_code=404, detail="Photo not found")
+    return FileResponse(path)
 
 
-@main.route("/clients", methods=["GET", "POST"])
-@login_required
-def clients():
-    if request.method == "POST":
-        client_id = request.form.get("client_id")
-        if not client_id:
-            flash("❌ Client ID is required.", "danger")
-            return redirect(url_for("main.clients"))
-
-        existing = Client.query.filter_by(client_id=client_id).first()
-        if existing:
-            flash("❌ Client ID already exists.", "danger")
-            return redirect(url_for("main.clients"))
-
-        token = uuid.uuid4().hex
-        client = Client(client_id=client_id, token=token, frpc_config={}, user_id=current_user.id)
-        db.session.add(client)
-        db.session.commit()
-        flash("✅ Client added successfully.", "success")
-        return redirect(url_for("main.clients"))
-
+@router.get("/clients")
+def clients_page(request: Request, user: User = Depends(require_user)):
     return _serve_frontend_page("clients/index.html")
 
 
-@main.route("/api/me")
-@login_required
-def me():
-    return jsonify({
-        "id": current_user.id,
-        "username": current_user.username,
-        "email": current_user.email,
-        "role": current_user.role,
-        "email_verified": bool(current_user.email_verified),
-        "profile_url": current_user.profile_url,
-    })
+@router.post("/clients")
+def add_client(
+    client_id: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    client_id = client_id.strip()
+    if not client_id:
+        return RedirectResponse(url="/clients?error=missing_id", status_code=303)
+
+    existing = db.query(Client).filter_by(client_id=client_id).first()
+    if existing:
+        return RedirectResponse(url="/clients?error=exists", status_code=303)
+
+    token = uuid.uuid4().hex
+    client = Client(client_id=client_id, token=token, frpc_config=[], user_id=user.id)
+    db.add(client)
+    db.commit()
+    return RedirectResponse(url="/clients?success=added", status_code=303)
 
 
-@main.route("/api/dashboard")
-@login_required
-def dashboard_data():
-    if current_user.role == "admin":
-        clients = Client.query.all()
+@router.get("/api/me")
+def me(user: User = Depends(require_user)):
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "email_verified": bool(user.email_verified),
+        "profile_url": user.profile_url,
+    }
+
+
+@router.get("/api/dashboard")
+def dashboard_data(db: Session = Depends(get_db), user: User = Depends(require_user)):
+    if user.role == "admin":
+        clients = db.query(Client).all()
     else:
-        clients = Client.query.filter_by(user_id=current_user.id).all()
+        clients = db.query(Client).filter_by(user_id=user.id).all()
 
-    return jsonify({
+    return {
         "total_clients": len(clients),
         "total_tunnels": sum(len(c.frpc_config or []) for c in clients),
         "clients": [
@@ -191,59 +195,66 @@ def dashboard_data():
             }
             for c in clients[:8]
         ],
-    })
+    }
 
 
-@main.route("/api/clients")
-@login_required
-def clients_data():
-    if current_user.role == "admin":
-        all_clients = Client.query.all()
+@router.get("/api/clients")
+def clients_data(request: Request, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    if user.role == "admin":
+        all_clients = db.query(Client).all()
     else:
-        all_clients = Client.query.filter_by(user_id=current_user.id).all()
+        all_clients = db.query(Client).filter_by(user_id=user.id).all()
 
-    return jsonify({
+    host_url = str(request.base_url)
+
+    return {
         "clients": [
             {
                 "client_id": c.client_id,
                 "token": c.token,
                 "owner": c.user.username if c.user else None,
                 "tunnels": len(c.frpc_config or []),
-                "installer": f"curl -sSL \"{request.host_url}script/{c.client_id}/{c.token}-installer.sh\" | bash",
+                "installer": f"curl -sSL \"{host_url}script/{c.client_id}/{c.token}-installer.sh\" | bash",
             }
             for c in all_clients
         ]
-    })
+    }
 
 
-@main.route("/api/<client_id>/kana_frpc.json")
-def get_frpc(client_id):
+@router.get("/api/{client_id}/kana_frpc.json")
+def get_frpc(client_id: str, request: Request, db: Session = Depends(get_db)):
     token = request.headers.get("X-Auth-Token")
-    client = Client.query.filter_by(client_id=client_id).first()
+    client = db.query(Client).filter_by(client_id=client_id).first()
 
     if not client or client.token != token:
-        abort(403)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     response = {
         "common": {
-            "server_addr": current_app.config.get("FRPS_SERVER_ADDR", "127.0.0.1"),
-            "server_port": current_app.config.get("FRPS_BIND_PORT", 7000),
-            "token": current_app.config.get("FRPS_GLOBAL_TOKEN", "thisiskannnhole"),
+            "server_addr": Config.FRPS_SERVER_ADDR,
+            "server_port": Config.FRPS_BIND_PORT,
+            "token": Config.FRPS_GLOBAL_TOKEN,
             "protocol": "tcp",
             "connect_timeout": 10
         },
         "proxies": client.frpc_config
     }
 
-    return jsonify(response)
+    return response
 
 
-@main.route("/script/<client_id>/<token>-installer.sh")
-def generate_installer(client_id, token):
-    client = Client.query.filter_by(client_id=client_id, token=token).first_or_404()
-    base = request.host_url.rstrip("/")
+@router.get("/script/{client_id}/{token}-installer.sh")
+def generate_installer(client_id: str, token: str, request: Request, db: Session = Depends(get_db)):
+    client = db.query(Client).filter_by(client_id=client_id, token=token).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    base = str(request.base_url).rstrip("/")
 
-    template_path = current_app.config.get("INSTALLER_TEMPLATE_PATH")
+    template_path = Config.INSTALLER_TEMPLATE_PATH
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=503, detail="Installer template not found.")
+
     with open(template_path, "r") as f:
         template = f.read()
 
@@ -251,36 +262,41 @@ def generate_installer(client_id, token):
                             .replace("{TOKEN}", token)\
                             .replace("{BASE}", base)
 
-    return Response(filled_script, mimetype="text/x-shellscript")
+    return Response(filled_script, media_type="text/x-shellscript")
 
 
-@main.route("/client/<client_id>/<token>/ktmc.py")
-def serve_ktmc_py(client_id, token):
-    client = Client.query.filter_by(client_id=client_id, token=token).first()
+@router.get("/client/{client_id}/{token}/ktmc")
+def serve_ktmc(client_id: str, token: str, db: Session = Depends(get_db)):
+    client = db.query(Client).filter_by(client_id=client_id, token=token).first()
     if not client:
-        abort(403)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-    path = current_app.config.get("KTMC_PY_PATH")
-    return send_file(path, mimetype="text/x-python")
+    path = Config.KTMC_BIN_PATH
+    if not os.path.exists(path):
+        raise HTTPException(status_code=503, detail="ktmc binary not found.")
+    return FileResponse(path, media_type="application/octet-stream")
 
 
-@main.route("/client/<client_id>/<token>/frpc")
-def serve_frpc(client_id, token):
-    client = Client.query.filter_by(client_id=client_id, token=token).first()
+@router.get("/client/{client_id}/{token}/frpc")
+def serve_frpc(client_id: str, token: str, db: Session = Depends(get_db)):
+    client = db.query(Client).filter_by(client_id=client_id, token=token).first()
     if not client:
-        abort(403)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-    path = current_app.config.get("FRPC_PATH")
-    return send_file(path, mimetype="application/octet-stream")
+    path = Config.FRPC_PATH
+    if not os.path.exists(path):
+        raise HTTPException(status_code=503, detail="frpc binary not found.")
+    return FileResponse(path, media_type="application/octet-stream")
 
 
-@main.route("/client/<client_id>/<token>/config.json")
-def serve_config_json(client_id, token):
-    client = Client.query.filter_by(client_id=client_id, token=token).first()
+@router.get("/client/{client_id}/{token}/config.json")
+def serve_config_json(client_id: str, token: str, request: Request, db: Session = Depends(get_db)):
+    client = db.query(Client).filter_by(client_id=client_id, token=token).first()
     if not client:
-        abort(403)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-    api_url = f"{request.host_url.rstrip('/')}/api/{client.client_id}/kana_frpc.json"
+    host_url = str(request.base_url).rstrip("/")
+    api_url = f"{host_url}/api/{client.client_id}/kana_frpc.json"
     cfg = {
         "client_id": client.client_id,
         "token": client.token,
@@ -290,192 +306,201 @@ def serve_config_json(client_id, token):
         "check_interval": 30
     }
 
-    return jsonify(cfg)
+    return cfg
 
 
-@main.route("/api/clients/<client_id>/tunnels", methods=["GET", "POST"])
-@login_required
-def manage_tunnels(client_id):
-    client = Client.query.filter_by(client_id=client_id).first_or_404()
-    if current_user.role != "admin" and client.user_id != current_user.id:
-        abort(403)
+@router.get("/api/clients/{client_id}/tunnels")
+def manage_tunnels_get(client_id: str, db: Session = Depends(get_db), user: User = Depends(require_user)):
+    client = db.query(Client).filter_by(client_id=client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
 
-    if request.method == "POST":
-        data = request.get_json()
-        proxies = data.get('proxies', []) or []
-        action = data.get('action', '')
+    if user.role != "admin" and client.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
-        if action == 'validate':
-            for proxy in proxies:
-                if proxy.get('enabled'):
-                    port = proxy.get('remotePort')
-                    error = check_port_availability(port, exclude_client_id=client_id)
-                    if error:
-                        return jsonify({"error": error}), 400
-            return jsonify({"message": "Port available"}), 200
-
-        if 'proxies' in data:
-            client.frpc_config = proxies
-            db.session.commit()
-            return jsonify({"message": "Tunnels saved"}), 200
-
-        return jsonify({"error": "Invalid action"}), 400
-
-    return jsonify({
+    return {
         "client_id": client.client_id,
         "frpc_config": client.frpc_config or []
-    })
+    }
 
-@main.route("/clients/<client_id>/tunnels/add", methods=["POST"])
-@login_required
-def add_tunnel(client_id):
-    client = Client.query.filter_by(client_id=client_id).first_or_404()
-    if current_user.role != "admin" and client.user_id != current_user.id:
-        return jsonify({"error": "forbidden"}), 403
 
-    data = request.get_json()
+@router.post("/api/clients/{client_id}/tunnels")
+def manage_tunnels_post(
+    client_id: str,
+    data: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    client = db.query(Client).filter_by(client_id=client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if user.role != "admin" and client.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    proxies = data.get('proxies', []) or []
+    action = data.get('action', '')
+
+    if action == 'validate':
+        for proxy in proxies:
+            if proxy.get('enabled'):
+                port = proxy.get('remotePort')
+                error = check_port_availability(port, db, exclude_client_id=client_id)
+                if error:
+                    raise HTTPException(status_code=400, detail=error)
+        return {"message": "Port available"}
+
+    if 'proxies' in data:
+        client.frpc_config = proxies
+        flag_modified(client, "frpc_config")
+        db.commit()
+        return {"message": "Tunnels saved"}
+
+    raise HTTPException(status_code=400, detail="Invalid action")
+
+
+@router.post("/clients/{client_id}/tunnels/add")
+def add_tunnel(
+    client_id: str,
+    data: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    client = db.query(Client).filter_by(client_id=client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    if user.role != "admin" and client.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     proxies = data.get('proxies', [])
     if not proxies:
-        return jsonify({"error": "No proxy data"}), 400
+        raise HTTPException(status_code=400, detail="No proxy data")
 
     new = proxies[0]
     if new.get('enabled'):
         port = new.get('remotePort')
-        error = check_port_availability(port)
+        error = check_port_availability(port, db)
         if error:
-            return jsonify({"error": error}), 400
+            raise HTTPException(status_code=400, detail=error)
 
-    client.frpc_config = (client.frpc_config or []) + [new]
-    db.session.commit()
-    return jsonify({"message": "Tunnel added"}), 200
+    config = list(client.frpc_config or [])
+    config.append(new)
+    client.frpc_config = config
+    flag_modified(client, "frpc_config")
+    db.commit()
+    return {"message": "Tunnel added"}
 
 
-@main.route("/clients/<client_id>/tunnels/edit", methods=["POST"])
-@login_required
-def edit_tunnel(client_id):
-    client = Client.query.filter_by(client_id=client_id).first_or_404()
-    if current_user.role != "admin" and client.user_id != current_user.id:
-        return jsonify({"error": "forbidden"}), 403
+@router.post("/clients/{client_id}/tunnels/edit")
+def edit_tunnel(
+    client_id: str,
+    data: Dict[str, Any],
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
+    client = db.query(Client).filter_by(client_id=client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
 
-    data = request.get_json()
+    if user.role != "admin" and client.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     edited = data.get('proxy')
     index = data.get('index')
 
     if edited is None or index is None:
-        return jsonify({"error": "Missing data"}), 400
+        raise HTTPException(status_code=400, detail="Missing data")
 
     if edited.get('enabled'):
         port = edited.get('remotePort')
-        error = check_port_availability(port, exclude_client_id=client_id)
+        error = check_port_availability(port, db, exclude_client_id=client_id)
         if error:
-            return jsonify({"error": error}), 400
+            raise HTTPException(status_code=400, detail=error)
 
-    if index < 0 or index >= len(client.frpc_config):
-        return jsonify({"error": "Invalid index"}), 400
+    config = list(client.frpc_config or [])
+    if index < 0 or index >= len(config):
+        raise HTTPException(status_code=400, detail="Invalid index")
 
-    client.frpc_config[index] = edited
-    db.session.commit()
-    return jsonify({"message": "Tunnel edited"}), 200
+    config[index] = edited
+    client.frpc_config = config
+    flag_modified(client, "frpc_config")
+    db.commit()
+    return {"message": "Tunnel edited"}
 
 
-@main.route("/profile/update", methods=["POST"])
-@login_required
-def profile_update():
-    email = request.form.get("email")
-    password = request.form.get("password")
-
+@router.post("/profile/update")
+def profile_update(
+    email: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user)
+):
     updated = False
 
-    if email and email != current_user.email:
-        current_user.email = email
-        current_user.email_verified = False
-        current_user.email_token = uuid.uuid4().hex
+    if email and email != user.email:
+        user.email = email
+        user.email_verified = False
+        user.email_token = uuid.uuid4().hex
         updated = True
-        if current_app.config.get("ENABLE_EMAIL_VERIFICATION"):
-            send_verification_email(current_user)  # ✅ cukup 1 argumen
+        if Config.ENABLE_EMAIL_VERIFICATION:
+            send_verification_email(user)
 
     if password:
-        current_user.set_password(password)
+        user.set_password(password.strip())
         updated = True
 
     if updated:
-        db.session.commit()
-        flash("✅ Profile updated successfully.", "success")
-    else:
-        flash("⚠️ No changes made.", "warning")
+        db.commit()
 
-    return redirect(url_for("main.profile"))
+    return RedirectResponse(url="/profile", status_code=303)
 
 
-
-@main.route("/verify_email/<token>")
-def verify_email(token):
-    user = User.query.filter_by(email_token=token).first()
+@router.get("/verify_email/{token}")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email_token=token).first()
     if not user:
-        flash("Invalid or expired verification link.", "danger")
-        return redirect(url_for("main.profile"))
+        return RedirectResponse(url="/profile?error=invalid_token", status_code=303)
 
     user.email_verified = True
     user.email_token = None
-    db.session.commit()
-    return redirect(url_for("main.verify_email_success"))
+    db.commit()
+    return RedirectResponse(url="/verify_email/success", status_code=303)
 
 
+@router.post("/resend_verification")
+def resend_verification(db: Session = Depends(get_db), user: User = Depends(require_user)):
+    if not user.email or user.email_verified:
+        return RedirectResponse(url="/profile?info=already_verified", status_code=303)
 
-@main.route("/resend_verification", methods=["POST"])
-@login_required
-def resend_verification():
-    if not current_user.email or current_user.email_verified:
-        flash("Email sudah diverifikasi atau tidak tersedia.", "info")
-        return redirect(url_for("main.profile"))
+    user.email_token = uuid.uuid4().hex
+    db.commit()
 
-    from uuid import uuid4
-    current_user.email_token = uuid4().hex
-    db.session.commit()
+    send_verification_email(user)
+    return RedirectResponse(url="/profile?success=verification_resent", status_code=303)
 
-    send_verification_email(current_user)  # ✅ cukup 1 argumen
-    flash("📧 Link verifikasi telah dikirim ulang ke email kamu.", "success")
-    return redirect(url_for("main.profile"))
 
-@main.route("/verify_email/success")
+@router.get("/verify_email/success")
 def verify_email_success():
-    return redirect(url_for("main.profile"))
+    return RedirectResponse(url="/profile", status_code=303)
 
 
-@main.route("/tunnels")
-@login_required
-def tunnels_page():
+@router.get("/tunnels")
+def tunnels_page(request: Request, user: User = Depends(require_user)):
     return _serve_frontend_page("tunnels/index.html")
 
 
-@main.route("/admin")
-@login_required
-def admin_page():
-    if current_user.role != "admin":
-        abort(403)
-    return _serve_frontend_page("admin/index.html")
-
-
-@main.route("/login")
-def login_page():
-    if current_user.is_authenticated:
-        return redirect(url_for("main.dashboard"))
-    return _serve_frontend_page("login/index.html")
-
-
-@main.route("/clients/<client_id>/tunnels")
-@login_required
-def client_tunnels_page(client_id):
+@router.get("/clients/{client_id}/tunnels")
+def client_tunnels_page(client_id: str, request: Request, user: User = Depends(require_user)):
     return _serve_frontend_page("clients/manage/index.html")
 
 
-@main.route("/api/tunnels")
-@login_required
-def tunnels_data():
-    if current_user.role == "admin":
-        all_clients = Client.query.all()
+@router.get("/api/tunnels")
+def tunnels_data(db: Session = Depends(get_db), user: User = Depends(require_user)):
+    if user.role == "admin":
+        all_clients = db.query(Client).all()
     else:
-        all_clients = Client.query.filter_by(user_id=current_user.id).all()
+        all_clients = db.query(Client).filter_by(user_id=user.id).all()
 
     all_tunnels = []
     for c in all_clients:
@@ -491,10 +516,4 @@ def tunnels_data():
                     "enabled": proxy.get("enabled"),
                 })
 
-    return jsonify({"tunnels": all_tunnels})
-
-
-@main.route("/_astro/<path:filename>")
-def astro_assets(filename):
-    assets_dir = os.path.join(_frontend_dist_dir(), "_astro")
-    return send_from_directory(assets_dir, filename)
+    return {"tunnels": all_tunnels}

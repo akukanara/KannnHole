@@ -1,15 +1,11 @@
 import os
 import subprocess
-import signal
+from config import Config
 
-# WORKDIR mengarah ke root direktori app (misalnya "host/")
-WORKDIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-
-# Path frps dan konfigurasinya (langsung tetap)
-FRPS_PATH = os.path.join(WORKDIR, "bin", "frp", "frps")
-CONFIG_PATH = os.path.join(WORKDIR, "bin", "frp", "config", "frps.ini")
-LOG_FILE = os.path.join(WORKDIR, "bin", "frp", "config", "frps.log")
-PID_FILE = os.path.join(WORKDIR, "bin", "frp", "config", "frps.pid")
+FRPS_PATH = Config.FRPS_BIN_PATH
+CONFIG_PATH = os.path.join(Config.FRPS_CONFIG_DIR, "frps.ini")
+LOG_FILE = os.path.join(Config.FRPS_CONFIG_DIR, "frps.log")
+PID_FILE = os.path.join(Config.FRPS_CONFIG_DIR, "frps.pid")
 
 def is_running(pid):
     try:
@@ -32,6 +28,7 @@ def start_frps():
     print(f"[FRP] Starting frps using {CONFIG_PATH}")
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a") as logf:
+        # Run the FRPS binary
         proc = subprocess.Popen(
             [FRPS_PATH, "-c", CONFIG_PATH],
             stdout=logf,

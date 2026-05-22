@@ -1,9 +1,8 @@
-from app import create_app, db
-from app.models import User, Client
+import uvicorn
+from app import create_app
 
 app = create_app()
 
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True, host="0.0.0.0")
+    # Passing the app instance directly is required for PyInstaller compilation compatibility
+    uvicorn.run(app, host="0.0.0.0", port=5000)

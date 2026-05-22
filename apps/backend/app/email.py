@@ -1,14 +1,16 @@
-from flask import current_app
+from config import Config
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 def send_verification_email(user):
     if not user.email or not user.email_token:
         return False
 
-    app = current_app
-    verify_url = f"{app.config['BASE_URL']}/verify_email/{user.email_token}"
+    verify_url = f"{Config.BASE_URL}/verify_email/{user.email_token}"
 
     # HTML template
     html = f"""
@@ -30,24 +32,24 @@ def send_verification_email(user):
 
     msg = MIMEMultipart("alternative")
     msg['Subject'] = 'Verify Your Email'
-    msg['From'] = app.config['MAIL_DEFAULT_SENDER'][1]
+    msg['From'] = Config.MAIL_DEFAULT_SENDER[1]
     msg['To'] = user.email
 
     msg.attach(MIMEText("Please verify your email address", "plain"))  # fallback
     msg.attach(MIMEText(html, "html"))  # actual content
 
     try:
-        if app.config.get("MAIL_USE_SSL"):
-            server = smtplib.SMTP_SSL(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
+        if Config.MAIL_USE_SSL:
+            server = smtplib.SMTP_SSL(Config.MAIL_SERVER, Config.MAIL_PORT)
         else:
-            server = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
-            if app.config.get("MAIL_USE_TLS"):
+            server = smtplib.SMTP(Config.MAIL_SERVER, Config.MAIL_PORT)
+            if Config.MAIL_USE_TLS:
                 server.starttls()
 
-        server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+        server.login(Config.MAIL_USERNAME, Config.MAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
         return True
     except Exception as e:
-        app.logger.error(f"[Email] Failed to send verification email: {e}")
+        logger.error(f"[Email] Failed to send verification email: {e}")
         return False

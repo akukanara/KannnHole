@@ -10,6 +10,12 @@
     "frontend:dev": "npm run dev --workspace=apps/frontend",
     "frontend:build": "npm run build --workspace=apps/frontend",
     "backend:dev": "cd apps/backend && python kannnhole.py",
-    "backend:install": "cd apps/backend && pip install -r requirements.txt"
+    "backend:install": "cd apps/backend && pip install -r requirements.txt",
+    "backend:build": "cd apps/backend && pyinstaller --clean kannnhole.spec",
+    "agent:install": "cd packages/agent && go mod tidy",
+    "agent:build": "cd packages/agent && go run build.go",
+    "agent:build:linux": "cd packages/agent && go run build.go linux",
+    "agent:build:windows": "cd packages/agent && go run build.go windows",
+    "agent:build:darwin": "cd packages/agent && go run build.go darwin"
   }
 }

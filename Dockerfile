@@ -31,7 +31,7 @@ COPY --from=frontend-builder /build/frontend/dist ../frontend/dist
 # Set path configuration environment variables pointing to relative/absolute monorepo locations
 ENV FRONTEND_DIST_DIR=/app/apps/frontend/dist \
     INSTALLER_TEMPLATE_PATH=/app/packages/agent/installer_template.sh \
-    KTMC_PY_PATH=/app/packages/agent/ktmc.py \
+    KTMC_BIN_PATH=/app/packages/agent/ktmc \
     FRPC_PATH=/app/packages/agent/bin/frp/frpc
 
 EXPOSE 5000 7000

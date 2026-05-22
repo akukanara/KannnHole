@@ -38,3 +38,14 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+# PyInstaller build and distribution directories
+apps/backend/build/
+apps/backend/dist/
+
+# Agent build outputs
+packages/agent/dist/
+packages/agent/ktmc
+packages/agent/ktmc.exe
+
+

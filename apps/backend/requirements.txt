@@ -1,7 +1,9 @@
-flask
-flask-login
-flask-sqlalchemy
+fastapi
+uvicorn[standard]
+sqlalchemy
 psycopg2-binary
 werkzeug
 psutil
 boto3
+python-multipart
+pyinstaller

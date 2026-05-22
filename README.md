@@ -13,8 +13,8 @@ KannnHole is built using a modern monorepo workspace architecture designed to se
 ```
 kannnhole-monorepo/
 ├── apps/
-│   ├── backend/                # 🐍 Flask Backend Server
-│   │   ├── app/                # Application modules (routes, auth, models, templates, etc.)
+│   ├── backend/                # ⚡ FastAPI Backend Server
+│   │   ├── app/                # Application modules (routes, auth, models, database, templates, etc.)
 │   │   ├── bin/                # Operational binaries (e.g. FRPS daemon, configuration artifacts)
 │   │   ├── data/               # Persistent media uploads & local user assets
 │   │   ├── scripts/            # Database utility scripts & CLI tools
@@ -22,7 +22,7 @@ kannnhole-monorepo/
 │   │   └── kannnhole.py        # Backend service entrypoint launcher
 │   └── frontend/               # ⚡ Astro + React + Tailwind Frontend Client
 │       ├── src/                # Astro pages, React hooks, and design system components
-│       └── dist/               # Statically compiled client assets (served by Flask backend)
+│       └── dist/               # Statically compiled client assets (served by FastAPI backend)
 ├── packages/
 │   └── agent/                  # 🤖 KannnHole Client Agent
 │       ├── bin/frp/frpc        # Compact client FRPC proxy binary
@@ -59,15 +59,15 @@ kannnhole-monorepo/
 ## 🛠️ Technology Stack
 
 ### Backend
-- **Framework:** Python 3.10+ (Flask)
-- **Database:** PostgreSQL 16+
-- **Security:** Flask-Login, PEP-8, Environment-isolated secrets.
+- **Framework:** Python 3.10+ (FastAPI + Uvicorn)
+- **Database:** PostgreSQL 16+ (SQLAlchemy)
+- **Security:** Starlette session cookies, PEP-8, Environment-isolated secrets.
 - **FRP Core:** Manages native `frps` servers.
 
 ### Frontend
 - **Framework:** Astro 4 (Static Page Generation)
 - **UI Libraries:** React 18, Radix UI Primitives, Tailwind CSS.
-- **Serving:** Statically compiled and efficiently served directly through Flask routing hooks.
+- **Serving:** Statically compiled and efficiently served directly through FastAPI routing hooks.
 
 ### Operations
 - **Containerization:** Multi-stage lightweight Alpine-based `Dockerfile`.
@@ -100,22 +100,40 @@ kannnhole-monorepo/
    ```bash
    cp ../../.env.example .env
    ```
-5. Run the application locally in developer mode:
+5. Run the application locally in developer mode from the root workspace directory:
    ```bash
-   python kannnhole.py
+   npm run backend:dev
    ```
+   *(Or inside `apps/backend`: `python kannnhole.py`)*
 
 ### 2. Frontend Setup
 1. Launch the frontend development server (with HMR) from the root directory:
    ```bash
    npm run frontend:dev
    ```
-2. Build the production assets to be served by Flask:
+2. Build the production assets to be served by FastAPI:
    ```bash
    npm run frontend:build
    ```
 
-### 3. Docker Launch (Quickstart)
+### 3. Standalone PyInstaller Compilation (Quickstart)
+KannnHole can be compiled into a single, standalone executable that packages all Python code, front-end resources, client-agent installation shell templates, and FRP executables.
+
+1. Build the frontend:
+   ```bash
+   npm run frontend:build
+   ```
+2. Compile the standalone executable:
+   ```bash
+   npm run backend:build
+   ```
+This generates a single executable binary (`kannnhole.exe` on Windows or `kannnhole` on Linux/macOS) in `apps/backend/dist/`.
+
+#### ❄️ Frozen and Writeable Paths
+- **Read-Only Packaged Assets**: The compiled web page builds, configuration agent binaries, and install shells are automatically extracted to a secure temporary execution path `sys._MEIPASS` and run/served from there.
+- **Writeable Workspace Settings**: Runtime sqlite database storage, uploaded user avatar media, and reverse proxy config logs are handled next to the running executable binary (`sys.executable` folder) so that custom configurations remain persistent.
+
+### 4. Docker Launch (Quickstart)
 To spin up the database and the full monorepo stack containerized instantly:
 ```bash
 docker-compose up --build
