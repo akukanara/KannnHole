@@ -1,0 +1,34 @@
+name: Build KannnHole Go Client Agent
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-agent:
+    name: Build Multi-Platform Agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: packages/agent/go.sum
+
+      - name: Build Client Agents
+        working-directory: packages/agent
+        run: go run build.go
+
+      - name: Upload Agent Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kannnhole-client-agents
+          path: packages/agent/dist/
+          if-no-files-found: error
